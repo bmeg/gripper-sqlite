@@ -108,7 +108,7 @@ func (pk *PrimaryKeyDriver) FetchMatchRows(ctx context.Context, field string, va
 	out := make(chan *gripper.BaseRow, 10)
 	go func() {
 		defer close(out)
-		if rows, err := pk.db.Queryx("select * from ? where ? = ?", pk.tableName, field, value); err == nil {
+		if rows, err := pk.db.Queryx(fmt.Sprintf("select * from %s where %s = ?", pk.tableName, field), value); err == nil {
 			for rows.Next() {
 				d := make(map[string]interface{})
 				slice, _ := rows.SliceScan()
@@ -154,7 +154,7 @@ func (et *EdgeTableDriver) FetchRow(id string) (*gripper.BaseRow, error) {
 	var err error
 	var out *gripper.BaseRow
 	tmp := strings.Split(id, et.delim)
-	if len(tmp) != 2 {
+	if len(tmp) < 2 {
 		return nil, fmt.Errorf("Unable to parse key")
 	}
 	src := tmp[0]
@@ -192,7 +192,7 @@ func (et *EdgeTableDriver) newEdgeRow(data map[string]interface{}) (*gripper.Bas
 		} else if idInt, ok := id.(int64); ok {
 			srcStr = strconv.FormatInt(idInt, 10)
 		} else {
-			return nil, fmt.Errorf("Source key %#v (%T) not a string: %s", id, id, id)
+			return nil, fmt.Errorf("Source key %s %#v (%T) not a string: %s", et.sourceField, id, id, id)
 		}
 	}
 	dstStr := ""
@@ -208,7 +208,7 @@ func (et *EdgeTableDriver) newEdgeRow(data map[string]interface{}) (*gripper.Bas
 		}
 	}
 	idStr := srcStr + ":" + dstStr
-	return &gripper.BaseRow{idStr, data}, nil
+	return &gripper.BaseRow{idStr, map[string]interface{}{et.sourceField: srcStr, et.destField: dstStr}}, nil
 }
 
 func (et *EdgeTableDriver) FetchRows(ctx context.Context) (chan *gripper.BaseRow, error) {
@@ -237,7 +237,7 @@ func (et *EdgeTableDriver) FetchMatchRows(ctx context.Context, field string, val
 	out := make(chan *gripper.BaseRow, 10)
 	go func() {
 		defer close(out)
-		if rows, err := et.db.Queryx("select * from ? where ? = ?", et.tableName, field, value); err == nil {
+		if rows, err := et.db.Queryx(fmt.Sprintf("select * from %s where %s = ?", et.tableName, field), value); err == nil {
 			for rows.Next() {
 				d := make(map[string]interface{})
 				slice, _ := rows.SliceScan()
@@ -346,6 +346,7 @@ func (a *Sqlite3Server) TableSetup() (map[string]gripper.Driver, error) {
 				sourceField: primaryKeys[table],
 				destField:   field,
 			}
+			log.Printf("Adding edge table %#v", *d)
 			out[table+":"+field] = d
 		}
 	}
